@@ -1,18 +1,19 @@
-# AutoGen/AG2 framework with MCP support
-ag2[mcp,openai]==0.9.8.post1
+# AutoGen framework with native MCP support
+autogen-agentchat[openai]>=0.7.3
+autogen-ext[mcp]>=0.7.3
 
-# Additional dependencies for custom LLM integration
-requests>=2.31.0
-httpx>=0.24.0
+# Core dependencies
+pydantic>=2.10.0
+httpx>=0.28.1
 
-# SSE client for MCP server communication
-sseclient-py>=1.7.2
-
-# No hardcoded dependencies - framework supports any MCP server
+# Environment and configuration
+python-dotenv>=1.0.0
 
 # Development and testing
 pytest>=7.0.0
-python-dotenv>=1.0.0
 
-# Logging and monitoring
-structlog>=23.0.0 
+# Logging
+structlog>=23.0.0
+
+# No additional MCP dependencies needed - AutoGen handles everything natively
+# Supports any standardized MCP server via SSE, Stdio, or HTTP transport 

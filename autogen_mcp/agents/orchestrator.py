@@ -69,8 +69,10 @@ class SimpleWorkflow(Workflow):
             messages = []
             
             # Get initial agent response
-            response = await self.kubernetes_agent.run_task(query)
-            agent_message = response.messages[-1].content
+            from autogen_core import CancellationToken
+            result = await self.kubernetes_agent.run(task=query, cancellation_token=CancellationToken())
+            response = result.messages[-1].content if result.messages else "No response"
+            agent_message = response
             
             message = WorkflowMessage(
                 agent_name=self.kubernetes_agent.name,
@@ -102,10 +104,11 @@ Please explain these results to the user in a helpful way, including:
 3. Any issues you notice
 4. Best practices or recommendations"""
 
-                        explanation_response = await self.kubernetes_agent.run_task(explanation_task)
+                        explanation_result = await self.kubernetes_agent.run(task=explanation_task, cancellation_token=CancellationToken())
+                        explanation_response = explanation_result.messages[-1].content if explanation_result.messages else "No explanation"
                         explanation_message = WorkflowMessage(
                             agent_name=self.kubernetes_agent.name,
-                            content=explanation_response.messages[-1].content
+                            content=explanation_response
                         )
                         messages.append(explanation_message)
             
@@ -128,16 +131,37 @@ class MultiAgentWorkflow(Workflow):
         self.agent_factory = agent_factory
         self.mcp_client = mcp_client
         
-        # Create agent team from configuration
-        self.agents = self.agent_factory.create_agent_team()
+        # Agents will be created asynchronously
+        self.agents = {}
         self.conversation_flow = self.config.agents.conversation_flow
+        self._agents_initialized = False
         
-        logger.info(f"Initialized multi-agent workflow with {len(self.agents)} agents")
+        logger.info(f"Multi-agent workflow initialized - agents will be created on first use")
         logger.info(f"Conversation flow: {self.conversation_flow}")
+    
+    async def _ensure_agents_initialized(self):
+        """Ensure agents are created asynchronously."""
+        if not self._agents_initialized:
+            # Create agents from enabled agent definitions
+            enabled_agents = self.config.agents.get_enabled_agents()
+            
+            for agent_def in enabled_agents:
+                try:
+                    agent = await self.agent_factory.create_agent_from_definition(agent_def)
+                    if agent:
+                        self.agents[agent_def.name] = agent
+                        logger.info(f"Created agent: {agent_def.name}")
+                except Exception as e:
+                    logger.error(f"Failed to create agent {agent_def.name}: {e}")
+            
+            self._agents_initialized = True
+            logger.info(f"Initialized multi-agent workflow with {len(self.agents)} agents")
     
     async def execute(self, query: str) -> WorkflowResult:
         """Execute multi-agent workflow."""
         try:
+            # Ensure agents are initialized
+            await self._ensure_agents_initialized()
             messages = []
             
             # Use configured conversation flow
@@ -162,8 +186,10 @@ class MultiAgentWorkflow(Workflow):
                         context = self._create_context(messages, max_messages=3)
                     
                     # Get agent response
-                    response = await agent.run_task(context)
-                    agent_message = response.messages[-1].content
+                    from autogen_core import CancellationToken
+                    result = await agent.run(task=context, cancellation_token=CancellationToken())
+                    response = result.messages[-1].content if result.messages else "No response"
+                    agent_message = response
                     
                     message = WorkflowMessage(
                         agent_name=agent_name,
@@ -257,17 +283,13 @@ class AgentOrchestrator:
     def __init__(self, config: AppConfig, mcp_client: MCPToolsClient):
         self.config = config
         self.mcp_client = mcp_client
-        self.agent_factory = AgentFactory(config, mcp_client)
+        self.agent_factory = AgentFactory(mcp_client, config.agents)
         self._initialized = False
     
     async def initialize(self) -> bool:
         """Initialize the orchestrator."""
         try:
-            await self.mcp_client.initialize()
-            
-            # Initialize tools discovery
-            await self.agent_factory.initialize_tools()
-            
+            # No need to initialize tools separately - AutoGen handles this
             self._initialized = True
             logger.info("Agent orchestrator initialized")
             return True
