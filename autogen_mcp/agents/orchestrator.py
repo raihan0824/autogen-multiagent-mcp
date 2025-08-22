@@ -41,68 +41,53 @@ class Workflow(ABC):
 
 
 class SimpleWorkflow(Workflow):
-    """Simple workflow that uses only the first available agent."""
+    """Simple workflow that uses only the first available agent with native AutoGen tool execution."""
     
     def __init__(self, config: AppConfig, agent_factory: AgentFactory):
         self.config = config
         self.agent_factory = agent_factory
-        
-        # Get the Kubernetes agent (or first available agent if not found)
-        self.kubernetes_agent = self._get_kubernetes_agent()
+        self.primary_agent = None
     
-    def _get_kubernetes_agent(self) -> AgentBase:
-        """Get the Kubernetes agent or fallback to first available agent."""
-        try:
-            return self.agent_factory.create_kubernetes_agent()
-        except Exception as e:
-            logger.warning(f"Failed to create Kubernetes agent, using first available: {e}")
-            agents = self.agent_factory.create_all_enabled_agents()
-            if agents:
-                return list(agents.values())[0]
-            else:
-                raise RuntimeError("No agents available")
+    async def _get_primary_agent(self) -> AgentBase:
+        """Get the first available agent asynchronously."""
+        if self.primary_agent is None:
+            enabled_agents = self.config.agents.get_enabled_agents()
+            if enabled_agents:
+                try:
+                    self.primary_agent = await self.agent_factory.create_agent(enabled_agents[0])
+                    if self.primary_agent:
+                        logger.info(f"Created primary agent: {self.primary_agent.name}")
+                        return self.primary_agent
+                except Exception as e:
+                    logger.error(f"Failed to create primary agent: {e}")
+            
+            raise RuntimeError("No agents available")
+        
+        return self.primary_agent
     
     async def execute(self, query: str) -> WorkflowResult:
-        """Execute query using the Kubernetes agent."""
+        """Execute query using native AutoGen multi-turn conversation."""
         try:
             messages = []
             
-            # Get initial agent response
+            # Get the primary agent
+            primary_agent = await self._get_primary_agent()
+            
+            # Single call to agent.run() - AutoGen handles all tool iterations internally
             from autogen_core import CancellationToken
-            result = await self.kubernetes_agent.run(task=query, cancellation_token=CancellationToken())
-            response = result.messages[-1].content if result.messages else "No response"
-            agent_message = response
+            logger.info(f"Starting native AutoGen conversation with agent: {primary_agent.name}")
             
-            message = WorkflowMessage(
-                agent_name=self.kubernetes_agent.name,
-                content=agent_message
-            )
-            messages.append(message)
+            result = await primary_agent.run(task=query, cancellation_token=CancellationToken())
             
-            # Process MCP commands if agent supports them
-            if hasattr(self.kubernetes_agent, 'parse_mcp_command'):
-                mcp_command = self.kubernetes_agent.parse_mcp_command(message.content)
-                if mcp_command:
-                    logger.info(f"MCP command detected (handled natively by AutoGen tools): {mcp_command}")
-                    message.mcp_result = None
-                    
-                    # Optionally, ask the agent to summarize what it did
-                    explanation_task = f"""Summarize the MCP tool action executed:
-
-Tool: {mcp_command.tool_name}
-Server: {mcp_command.server_name}
-Parameters: {mcp_command.parameters}
-
-Explain in brief what was executed and key findings if applicable."""
-
-                    explanation_result = await self.kubernetes_agent.run(task=explanation_task, cancellation_token=CancellationToken())
-                    explanation_response = explanation_result.messages[-1].content if explanation_result.messages else "No explanation"
-                    explanation_message = WorkflowMessage(
-                        agent_name=self.kubernetes_agent.name,
-                        content=explanation_response
-                    )
-                    messages.append(explanation_message)
+            # Extract all messages from the result (includes tool calls, executions, and responses)
+            for msg in result.messages:
+                message = WorkflowMessage(
+                    agent_name=primary_agent.name,
+                    content=str(msg.content) if hasattr(msg, 'content') else str(msg)
+                )
+                messages.append(message)
             
+            logger.info(f"Native AutoGen conversation completed with {len(messages)} messages")
             return WorkflowResult(success=True, messages=messages)
             
         except Exception as e:
@@ -115,93 +100,93 @@ Explain in brief what was executed and key findings if applicable."""
 
 
 class MultiAgentWorkflow(Workflow):
-    """Multi-agent workflow with configurable agent team."""
+    """Multi-agent workflow with native AutoGen tool execution."""
     
     def __init__(self, config: AppConfig, agent_factory: AgentFactory):
         self.config = config
         self.agent_factory = agent_factory
-        
-        # Agents will be created asynchronously
         self.agents = {}
-        self.conversation_flow = self.config.agents.conversation_flow
-        self._agents_initialized = False
-        
-        logger.info(f"Multi-agent workflow initialized - agents will be created on first use")
-        logger.info(f"Conversation flow: {self.conversation_flow}")
+        self.conversation_flow = []
     
     async def _ensure_agents_initialized(self):
-        """Ensure agents are created asynchronously."""
-        if not self._agents_initialized:
-            # Create agents from enabled agent definitions
+        """Asynchronously initialize agents and conversation flow."""
+        if not self.agents:
+            # Create all enabled agents asynchronously
             enabled_agents = self.config.agents.get_enabled_agents()
             
             for agent_def in enabled_agents:
                 try:
-                    agent = await self.agent_factory.create_agent_from_definition(agent_def)
+                    agent = await self.agent_factory.create_agent(agent_def)
                     if agent:
                         self.agents[agent_def.name] = agent
                         logger.info(f"Created agent: {agent_def.name}")
                 except Exception as e:
                     logger.error(f"Failed to create agent {agent_def.name}: {e}")
             
-            self._agents_initialized = True
+            # Get conversation flow from configuration
+            enabled_agent_names = [agent_def.name for agent_def in enabled_agents]
+            
+            # Use configured flow or default to enabled agents
+            if self.config.agents.conversation_flow:
+                self.conversation_flow = [name for name in self.config.agents.conversation_flow 
+                                        if name in enabled_agent_names]
+            else:
+                self.conversation_flow = enabled_agent_names
+            
             logger.info(f"Initialized multi-agent workflow with {len(self.agents)} agents")
     
     async def execute(self, query: str) -> WorkflowResult:
-        """Execute multi-agent workflow."""
+        """Execute multi-agent workflow with native AutoGen tool execution."""
         try:
             # Ensure agents are initialized
             await self._ensure_agents_initialized()
             messages = []
             
-            # Use configured conversation flow
-            for round_num in range(self.config.agents.max_conversation_rounds):
-                for agent_name in self.conversation_flow:
-                    # Check if agent exists in our team
-                    if agent_name not in self.agents:
-                        logger.warning(f"Agent '{agent_name}' in conversation flow not found in team, skipping")
-                        continue
-                    
-                    # Force termination after first complete round
-                    if round_num > 0:
-                        logger.info(f"Forcing workflow termination after {round_num} rounds")
-                        return WorkflowResult(success=True, messages=messages)
-                    
-                    agent = self.agents[agent_name]
-                    
-                    # Create context for agent
-                    if round_num == 0 and agent_name == self.conversation_flow[0]:
-                        context = f"User query: {query}"
-                    else:
-                        context = self._create_context(messages, max_messages=3)
-                    
-                    # Get agent response
-                    from autogen_core import CancellationToken
-                    result = await agent.run(task=context, cancellation_token=CancellationToken())
-                    response = result.messages[-1].content if result.messages else "No response"
-                    agent_message = response
-                    
+            # Use AutoGen's native conversation pattern
+            context = query
+            
+            # Let each agent in the flow handle the task with full tool capabilities
+            for agent_name in self.conversation_flow:
+                # Check if agent exists in our team
+                if agent_name not in self.agents:
+                    logger.warning(f"Agent '{agent_name}' in conversation flow not found in team, skipping")
+                    continue
+                
+                agent = self.agents[agent_name]
+                logger.info(f"Starting conversation with agent: {agent_name}")
+                
+                # Create enriched context with conversation history
+                if messages:
+                    context_parts = [f"Original query: {query}", ""]
+                    context_parts.append("Previous conversation:")
+                    for msg in messages[-3:]:  # Last 3 messages for context
+                        context_parts.append(f"{msg.agent_name}: {msg.content}")
+                    context_parts.append("")
+                    context_parts.append(f"Please continue the conversation as {agent_name}:")
+                    enriched_context = "\n".join(context_parts)
+                else:
+                    enriched_context = f"Query: {query}"
+                
+                # Single call to agent - AutoGen handles all tool iterations internally
+                from autogen_core import CancellationToken
+                result = await agent.run(task=enriched_context, cancellation_token=CancellationToken())
+                
+                # Extract all messages from this agent's conversation
+                agent_messages = []
+                for msg in result.messages:
                     message = WorkflowMessage(
                         agent_name=agent_name,
-                        content=agent_message
+                        content=str(msg.content) if hasattr(msg, 'content') else str(msg)
                     )
+                    agent_messages.append(message)
                     messages.append(message)
-                    
-                    # Handle MCP execution for agents with mcp capabilities  
-                    agent_def = self.config.agents.get_agent_by_name(agent_name)
-                    if agent_def and "mcp" in agent_def.capabilities:
-                                                 # Check for MCP commands in the response
-                        if hasattr(agent, 'parse_mcp_command'):
-                            mcp_command = agent.parse_mcp_command(agent_message)
-                            if mcp_command:
-                                logger.info(f"MCP command detected from {agent_name} (handled natively): {mcp_command}")
-                                # AutoGen native tools handle execution; we record that an MCP action occurred
-                                message.mcp_result = None
-                    
-                    # Check for workflow termination
-                    if self._should_terminate(agent_message, agent_name):
-                        logger.info(f"Workflow terminated by agent {agent_name}")
-                        return WorkflowResult(success=True, messages=messages)
+                
+                logger.info(f"Agent {agent_name} completed with {len(agent_messages)} messages")
+                
+                # Check for natural termination
+                if agent_messages and self._should_terminate(agent_messages[-1].content, agent_name):
+                    logger.info(f"Workflow naturally terminated by agent {agent_name}")
+                    break
             
             return WorkflowResult(success=True, messages=messages)
             

@@ -162,20 +162,22 @@ class AgentFactory:
                 model=llm_settings.model_name,
                 base_url=llm_settings.api_base_url.rstrip('/'),
                 api_key=llm_settings.api_key,
-                model_info=model_info
+                model_info=model_info,
+                parallel_tool_calls=False  # Disable parallel calls for MCP stability
             )
             
-            # Create agent with native AutoGen MCP tools
+            # Create agent with native AutoGen MCP tools and multi-turn capabilities
             agent = AssistantAgent(
                 name=agent_def.name,
                 model_client=model_client,
-                tools=agent_tools,  # Use native AutoGen MCP tools directly!
+                tools=agent_tools,  # Native AutoGen MCP tools
                 system_message=agent_def.system_message,
                 description=f"Agent {agent_def.name} with {len(agent_tools)} MCP tools",
-                reflect_on_tool_use=True
+                reflect_on_tool_use=True,  # Agent reflects on tool results
+                max_tool_iterations=5  # Allow up to 5 tool execution attempts
             )
             
-            logger.info(f"Created agent: {agent_def.name} ({agent_def.agent_type}) with {len(agent_tools)} native MCP tools")
+            logger.info(f"Created agent: {agent_def.name} ({agent_def.agent_type}) with {len(agent_tools)} native MCP tools and multi-turn capability")
             return agent
             
         except Exception as e:
@@ -184,8 +186,28 @@ class AgentFactory:
 
     # Keep this method for backward compatibility
     async def create_agent_from_definition(self, agent_def: AgentDefinition) -> Optional[ChatAgent]:
-        """Alias for create_agent for backward compatibility."""
+        """Create agent from definition - alias for create_agent."""
         return await self.create_agent(agent_def)
+
+    def create_all_enabled_agents(self) -> Dict[str, ChatAgent]:
+        """Create all enabled agents and return them as a dictionary."""
+        agents = {}
+        enabled_agents = self.agents_config.get_enabled_agents()
+        
+        for agent_def in enabled_agents:
+            try:
+                # Note: This is a sync method, but create_agent is async
+                # We need to handle this properly
+                import asyncio
+                agent = asyncio.run(self.create_agent(agent_def))
+                if agent:
+                    agents[agent_def.name] = agent
+                    logger.info(f"Created enabled agent: {agent_def.name}")
+            except Exception as e:
+                logger.error(f"Failed to create enabled agent {agent_def.name}: {e}")
+        
+        return agents
+
     
     def create_agent_team(self) -> Dict[str, ChatAgent]:
         """Create a complete team of agents from configuration - backward compatibility."""
