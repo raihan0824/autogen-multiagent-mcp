@@ -1,0 +1,49 @@
+{
+  "servers": [
+    {
+      "name": "kubernetes",
+      "description": "Kubernetes operations via MCP - using ALL tools",
+      "url": "http://localhost:3000",
+      "tools_endpoint": "/mcp/tools",
+      "tools": ["*"],
+      "enabled": true
+    },
+    {
+      "name": "postgres",
+      "description": "PostgreSQL database operations - using specific tools only",
+      "url": "http://localhost:4000", 
+      "tools_endpoint": "/mcp/tools",
+      "tools": ["sql_query", "table_list"],
+      "enabled": false
+    },
+    {
+      "name": "monitoring",
+      "description": "System monitoring - auto-discovery all tools",
+      "url": "http://localhost:5000",
+      "tools_endpoint": "/mcp/tools",
+      "enabled": false
+    },
+    {
+      "name": "aws",
+      "description": "AWS cloud operations - using specific tools",
+      "url": "http://localhost:6000",
+      "tools_endpoint": "/mcp/tools",
+      "tools": ["ec2_list", "s3_list"],
+      "enabled": false
+    },
+    {
+      "name": "github",
+      "description": "GitHub repository operations - using ALL tools", 
+      "url": "http://localhost:7000",
+      "tools_endpoint": "/mcp/tools",
+      "tools": ["*"],
+      "enabled": false
+    }
+  ],
+  "global_settings": {
+    "auto_discover_tools": true,
+    "timeout_seconds": 30,
+    "retry_attempts": 3,
+    "enable_caching": true
+  }
+} 

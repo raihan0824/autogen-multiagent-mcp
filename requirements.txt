@@ -1,0 +1,18 @@
+# AutoGen/AG2 framework with MCP support
+ag2[mcp,openai]==0.9.8.post1
+
+# Additional dependencies for custom LLM integration
+requests>=2.31.0
+httpx>=0.24.0
+
+# SSE client for MCP server communication
+sseclient-py>=1.7.2
+
+# No hardcoded dependencies - framework supports any MCP server
+
+# Development and testing
+pytest>=7.0.0
+python-dotenv>=1.0.0
+
+# Logging and monitoring
+structlog>=23.0.0 

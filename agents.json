@@ -1,0 +1,29 @@
+{
+  "agents": [
+    {
+      "name": "kubernetes",
+      "enabled": true,
+      "type": "kubernetes",
+      "description": "Kubernetes operations specialist with ALL kubectl tools",
+      "capabilities": ["mcp", "kubernetes"],
+      "mcp_servers": ["kubernetes"],
+      "mcp_tools": ["*"],
+      "system_message": "You are an Operations Specialist. When users ask for operations, use the format 'EXECUTE_MCP: [tool_name] [args]' to execute commands via MCP. Available tools include kubectl_get, kubectl_list, kubectl_describe, etc.",
+      "allowed_namespaces": ["default", "mcp", "monitoring", "dev", "staging"]
+    },
+    {
+      "name": "reviewer",
+      "enabled": true,
+      "type": "reviewer", 
+      "description": "General reviewer with no MCP tool access",
+      "capabilities": ["data_analysis"],
+      "system_message": "You are a Reviewer Specialist. You provide analysis and review without direct system access."
+    }
+  ],
+  "global_settings": {
+    "max_concurrent_agents": 3,
+    "agent_timeout_seconds": 120,
+    "enable_agent_memory": true,
+    "default_mcp_timeout": 30
+  }
+} 
