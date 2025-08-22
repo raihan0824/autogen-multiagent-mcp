@@ -22,13 +22,10 @@ logger = logging.getLogger(__name__)
 class AgentFactory:
     """Factory for creating different types of agents with native AutoGen MCP support."""
     
-    def __init__(self, mcp_client, agents_config):
-        """Initialize the factory with MCP client and agents configuration."""
+    def __init__(self, mcp_settings, agents_config):
+        """Initialize the factory with MCP settings and agents configuration."""
         self.agents_config = agents_config
-        self.mcp_client = mcp_client  # Keep for backward compatibility
-        
-        # Get MCP server configuration
-        self.mcp_servers_config = mcp_client.mcp_settings if hasattr(mcp_client, 'mcp_settings') else {}
+        self.mcp_settings = mcp_settings
         
         # Store native AutoGen MCP tools
         self.native_mcp_tools = {}
@@ -84,10 +81,10 @@ class AgentFactory:
         if self._cached_tools is None:
             # Use native AutoGen MCP support instead of custom client
             server_configs = []
-            if hasattr(self.mcp_servers_config, 'servers'):
-                server_configs = self.mcp_servers_config.servers
-            elif isinstance(self.mcp_servers_config, dict) and 'servers' in self.mcp_servers_config:
-                server_configs = self.mcp_servers_config['servers']
+            if hasattr(self.mcp_settings, 'servers'):
+                server_configs = self.mcp_settings.servers
+            elif isinstance(self.mcp_settings, dict) and 'servers' in self.mcp_settings:
+                server_configs = self.mcp_settings['servers']
             
             self.native_mcp_tools = await self._get_native_mcp_tools(server_configs)
             

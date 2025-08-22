@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import load_configuration
-from ..mcp import MCPToolsClient
+# No longer need custom MCP client - using AutoGen native MCP
 from ..agents import AgentOrchestrator
 from .commands import CLICommands
 
@@ -43,15 +43,8 @@ class AutoGenMCPCLI:
             setup_logging(self.config.logging.level)
             print("✅ Configuration loaded and validated")
             
-            # Create generic MCP client
-            self.mcp_client = MCPToolsClient(
-                self.config.mcp,
-                self.config.agents
-            )
-            print("✅ MCP client created")
-            
-            # Create orchestrator
-            self.orchestrator = AgentOrchestrator(self.config, self.mcp_client)
+            # Create orchestrator with AutoGen native MCP support
+            self.orchestrator = AgentOrchestrator(self.config)
             if not await self.orchestrator.initialize():
                 print("❌ Failed to initialize orchestrator")
                 return False
@@ -117,8 +110,6 @@ class AutoGenMCPCLI:
         try:
             if hasattr(self, 'orchestrator') and self.orchestrator:
                 await self.orchestrator.close()
-            if hasattr(self, 'mcp_client') and self.mcp_client:
-                await self.mcp_client.close()
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 

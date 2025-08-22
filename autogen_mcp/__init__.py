@@ -7,8 +7,9 @@ __version__ = "1.0.0"
 # Core imports
 from .config import load_configuration, AppConfig, LLMSettings, MCPSettings, AgentSettings
 from .agents import AgentFactory, AgentOrchestrator
-from .mcp import HTTPMCPClient, MultiMCPClient, MCPToolsClient
 from .cli import run_cli
+
+# AutoGen native MCP support - use autogen_ext.tools.mcp directly
 
 __all__ = [
     "load_configuration",
@@ -18,8 +19,5 @@ __all__ = [
     "AgentSettings",
     "AgentFactory",
     "AgentOrchestrator",
-    "HTTPMCPClient",
-    "MultiMCPClient", 
-    "MCPToolsClient",
     "run_cli"
 ] 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
 from ..config import AppConfig
-from ..mcp import MCPToolsClient, MCPCommand
+# No longer need custom MCP classes - using AutoGen native MCP
 from .factory import AgentFactory
 from .base import AgentBase
 
@@ -43,10 +43,9 @@ class Workflow(ABC):
 class SimpleWorkflow(Workflow):
     """Simple workflow that uses only the first available agent."""
     
-    def __init__(self, config: AppConfig, agent_factory: AgentFactory, mcp_client: MCPToolsClient):
+    def __init__(self, config: AppConfig, agent_factory: AgentFactory):
         self.config = config
         self.agent_factory = agent_factory
-        self.mcp_client = mcp_client
         
         # Get the Kubernetes agent (or first available agent if not found)
         self.kubernetes_agent = self._get_kubernetes_agent()
@@ -84,33 +83,25 @@ class SimpleWorkflow(Workflow):
             if hasattr(self.kubernetes_agent, 'parse_mcp_command'):
                 mcp_command = self.kubernetes_agent.parse_mcp_command(message.content)
                 if mcp_command:
-                    logger.info(f"Executing MCP command: {mcp_command}")
-                    result = await self.mcp_client.execute_tool(
-                        mcp_command.tool_name,
-                        mcp_command.server_name,
-                        mcp_command.parameters
-                    )
-                    message.mcp_result = result
+                    logger.info(f"MCP command detected (handled natively by AutoGen tools): {mcp_command}")
+                    message.mcp_result = None
                     
-                    if result.get("success", False):
-                        # Get agent to explain results
-                        explanation_task = f"""Here are the real MCP results:
+                    # Optionally, ask the agent to summarize what it did
+                    explanation_task = f"""Summarize the MCP tool action executed:
 
-{result.get("content", "No content available")}
+Tool: {mcp_command.tool_name}
+Server: {mcp_command.server_name}
+Parameters: {mcp_command.parameters}
 
-Please explain these results to the user in a helpful way, including:
-1. What each resource is doing
-2. The status of each resource
-3. Any issues you notice
-4. Best practices or recommendations"""
+Explain in brief what was executed and key findings if applicable."""
 
-                        explanation_result = await self.kubernetes_agent.run(task=explanation_task, cancellation_token=CancellationToken())
-                        explanation_response = explanation_result.messages[-1].content if explanation_result.messages else "No explanation"
-                        explanation_message = WorkflowMessage(
-                            agent_name=self.kubernetes_agent.name,
-                            content=explanation_response
-                        )
-                        messages.append(explanation_message)
+                    explanation_result = await self.kubernetes_agent.run(task=explanation_task, cancellation_token=CancellationToken())
+                    explanation_response = explanation_result.messages[-1].content if explanation_result.messages else "No explanation"
+                    explanation_message = WorkflowMessage(
+                        agent_name=self.kubernetes_agent.name,
+                        content=explanation_response
+                    )
+                    messages.append(explanation_message)
             
             return WorkflowResult(success=True, messages=messages)
             
@@ -126,10 +117,9 @@ Please explain these results to the user in a helpful way, including:
 class MultiAgentWorkflow(Workflow):
     """Multi-agent workflow with configurable agent team."""
     
-    def __init__(self, config: AppConfig, agent_factory: AgentFactory, mcp_client: MCPToolsClient):
+    def __init__(self, config: AppConfig, agent_factory: AgentFactory):
         self.config = config
         self.agent_factory = agent_factory
-        self.mcp_client = mcp_client
         
         # Agents will be created asynchronously
         self.agents = {}
@@ -201,17 +191,12 @@ class MultiAgentWorkflow(Workflow):
                     agent_def = self.config.agents.get_agent_by_name(agent_name)
                     if agent_def and "mcp" in agent_def.capabilities:
                                                  # Check for MCP commands in the response
-                         if hasattr(agent, 'parse_mcp_command'):
-                             mcp_command = agent.parse_mcp_command(agent_message)
-                             if mcp_command:
-                                 logger.info(f"Executing MCP command from {agent_name}: {mcp_command}")
-                                 # Execute using generic MCP command
-                                 result = await self.mcp_client.execute_tool(
-                                     mcp_command.tool_name,
-                                     mcp_command.server_name,
-                                     mcp_command.parameters
-                                 )
-                                 message.mcp_result = result
+                        if hasattr(agent, 'parse_mcp_command'):
+                            mcp_command = agent.parse_mcp_command(agent_message)
+                            if mcp_command:
+                                logger.info(f"MCP command detected from {agent_name} (handled natively): {mcp_command}")
+                                # AutoGen native tools handle execution; we record that an MCP action occurred
+                                message.mcp_result = None
                     
                     # Check for workflow termination
                     if self._should_terminate(agent_message, agent_name):
@@ -280,10 +265,9 @@ MultiAgentWorkflow = MultiAgentWorkflow
 class AgentOrchestrator:
     """Main orchestrator for agent workflows."""
     
-    def __init__(self, config: AppConfig, mcp_client: MCPToolsClient):
+    def __init__(self, config: AppConfig):
         self.config = config
-        self.mcp_client = mcp_client
-        self.agent_factory = AgentFactory(mcp_client, config.agents)
+        self.agent_factory = AgentFactory(config.mcp, config.agents)
         self._initialized = False
     
     async def initialize(self) -> bool:
@@ -307,7 +291,7 @@ class AgentOrchestrator:
                     error="Failed to initialize orchestrator"
                 )
         
-        workflow = SimpleWorkflow(self.config, self.agent_factory, self.mcp_client)
+        workflow = SimpleWorkflow(self.config, self.agent_factory)
         return await workflow.execute(query)
     
     async def execute_multi_agent_workflow(self, query: str) -> WorkflowResult:
@@ -320,13 +304,12 @@ class AgentOrchestrator:
                     error="Failed to initialize orchestrator"
                 )
         
-        workflow = MultiAgentWorkflow(self.config, self.agent_factory, self.mcp_client)
+        workflow = MultiAgentWorkflow(self.config, self.agent_factory)
         return await workflow.execute(query)
     
     async def close(self) -> None:
         """Close orchestrator and cleanup resources."""
         try:
-            await self.mcp_client.close()
             self._initialized = False
             logger.info("Agent orchestrator closed")
         except Exception as e:
