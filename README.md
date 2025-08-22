@@ -1,23 +1,25 @@
 # AutoGen MCP Multi-Agent Framework
 
-A **completely generic** multi-agent framework using AutoGen with MCP (Model Context Protocol) integration. Works with **ANY** MCP server - Kubernetes, PostgreSQL, AWS, GitHub, Monitoring, and more!
+A **completely generic** multi-agent framework using AutoGen with native MCP (Model Context Protocol) integration. Works with **ANY** MCP server - Kubernetes, PostgreSQL, AWS, GitHub, Monitoring, and more!
 
 ## 🌟 Key Features
 
 ✅ **100% Generic** - No hardcoded servers, tools, or commands  
+✅ **Native AutoGen MCP** - Uses AutoGen's built-in MCP support with SSE transport  
+✅ **Multi-Turn Tool Execution** - Intelligent tool retry, chaining, and failure handling  
 ✅ **Dynamic Tool Discovery** - Automatically discovers all available tools from any MCP server  
 ✅ **Multi-Server Support** - Connect to unlimited MCP servers simultaneously  
 ✅ **Flexible Tool Selection** - Use `*` for all tools or specify exact tools per server/agent  
 ✅ **Configuration-Driven** - Zero code changes needed, everything via JSON configs  
 ✅ **Dual-Level Filtering** - Control tools at both server and agent levels  
-✅ **Smart Parameter Parsing** - Handles various command formats generically  
+✅ **Intelligent Agent Conversations** - Multi-agent workflows with context preservation  
 
 ## 🚀 Installation Guide
 
 ### 1. Prerequisites
 - Python 3.8+
 - Access to an LLM API (OpenAI compatible)
-- One or more running MCP servers
+- One or more running MCP servers with `/mcp-server/sse` endpoint
 
 ### 2. Install Dependencies
 ```bash
@@ -49,18 +51,17 @@ EOF
       "name": "kubernetes",
       "url": "http://localhost:3000", 
       "enabled": true,
+      "timeout_seconds": 30,
+      "sse_endpoint": "/mcp-server/sse",
       "tools": ["*"]  // Use all available tools
     },
     {
-      "name": "postgresql",
+      "name": "postgres", 
       "url": "http://localhost:3001",
       "enabled": true,
-      "tools": ["pg_query", "pg_backup"]  // Only specific tools
-    },
-    {
-      "name": "monitoring",
-      "url": "http://localhost:3002", 
-      "enabled": false  // Disabled server
+      "timeout_seconds": 30,
+      "sse_endpoint": "/mcp-server/sse", 
+      "tools": ["query_database", "list_tables"]  // Specific tools only
     }
   ]
 }
@@ -68,83 +69,89 @@ EOF
 
 ### 5. Configure Agents
 ```json
-// agents.json  
+// agents.json
 {
   "agents": [
     {
       "name": "kubernetes",
-      "agent_type": "custom",
       "enabled": true,
-      "capabilities": ["mcp"],
+      "type": "kubernetes",
+      "description": "Kubernetes operations specialist",
+      "capabilities": ["mcp", "kubernetes"],
       "mcp_servers": ["kubernetes"],
-      "mcp_tools": ["*"],  // All tools from assigned servers
-      "system_message": "You are an Operations Specialist. Use 'EXECUTE_MCP: [tool_name] [args]' format.",
-      "allowed_namespaces": ["default", "mcp", "dev"]
+      "mcp_tools": ["*"],
+      "system_message": "You are a Kubernetes Operations Specialist. Use your kubectl tools to help users manage Kubernetes clusters. When tools fail, try alternative approaches. Always explain what you're doing and what the results mean."
     },
     {
-      "name": "database",
-      "agent_type": "custom", 
+      "name": "reviewer",
       "enabled": true,
-      "capabilities": ["mcp"],
-      "mcp_servers": ["postgresql"],
-      "mcp_tools": ["pg_query", "pg_backup"],  // Only specific tools
-      "system_message": "You are a Database Specialist. Use 'EXECUTE_MCP: [tool_name] [args]' format."
+      "type": "reviewer", 
+      "description": "Analysis and review specialist",
+      "capabilities": ["data_analysis"],
+      "system_message": "You analyze and review information provided by other agents, offering insights and recommendations."
     }
   ]
 }
 ```
 
-## 🎯 Multi-Agent Operation Flow
+## 🔄 Multi-Agent Operation Flow
 
-### 1. **Tool Discovery Phase**
+### 1. **Framework Initialization**
 ```
-🔍 Framework starts → Connects to all enabled MCP servers
-📡 Discovers available tools dynamically from each server  
+🔍 Framework starts → Connects to all enabled MCP servers via SSE
+📡 Discovers available tools dynamically using AutoGen's native MCP support  
 🎛️ Applies server-level tool filtering (*, specific tools, or none)
-🤖 Creates agents and applies agent-level tool filtering
+🤖 Creates agents with native AutoGen MCP tools and multi-turn capabilities
 ```
 
-### 2. **Query Processing**
+### 2. **Native Tool Execution**
 ```
-👤 User: "get pods in mcp namespace"
-🧠 LLM generates: "EXECUTE_MCP: kubectl_get pods -n mcp"
-🔧 Framework parses command generically 
-🎯 Maps tool to correct server dynamically
-```
-
-### 3. **Command Execution** 
-```
-📨 HTTP POST to MCP server: /mcp/tools/kubectl_get/call
-📊 Parameters: {"resourceType": "pods", "namespace": "mcp"}
-✅ Returns real data from Kubernetes cluster
-🎉 Agent responds with formatted results
+👤 User: "check pods in mcp namespace and explain what you find"
+🧠 AutoGen Agent decides: Uses kubectl_search tool automatically
+🔧 AutoGen handles tool calling natively (no manual parsing needed)
+🎯 Tool executes via MCP server with proper parameters
 ```
 
-### 4. **Multi-Agent Conversation**
+### 3. **Multi-Turn Conversation** 
 ```
-Agent Flow: kubernetes → security → reviewer
+📨 AutoGen manages SSE connection to MCP server
+📊 Tool returns real data from Kubernetes cluster
+🔄 Agent can retry with different tools if needed (kubectl_get, kubectl_describe, etc.)
+🎉 Agent processes results and provides intelligent response
+```
+
+### 4. **Multi-Agent Workflow**
+```
+Agent Flow: kubernetes → reviewer
 
 [1] 🤖 KUBERNETES: 
-EXECUTE_MCP: kubectl_get pods -n mcp
-✅ Found 5 running pods in mcp namespace
+Uses kubectl_search tool → Gets detailed pod information
+Explains pod status, distribution, and health
 
-[2] 🛡️ SECURITY:
-These pods look secure, all in expected namespace
+[2] 📋 REVIEWER: 
+Analyzes the data comprehensively
+Provides insights and actionable recommendations
+Suggests monitoring, updates, and maintenance strategies
+```
 
-[3] 📋 REVIEWER: 
-Operation completed successfully, no issues found
+### 5. **Intelligent Tool Handling**
+```
+✅ Tool Success: Agent proceeds with analysis
+❌ Tool Failure: Agent automatically tries alternative tools
+🔄 Tool Chaining: Agent can use multiple tools in sequence
+🧠 Context Preservation: Each agent sees full conversation history
 ```
 
 ## 🛠️ Usage Examples
 
 ### Basic Query
 ```bash
-python main.py "get pods in default namespace"
+python main.py "check pods in mcp namespace"
 ```
 
 ### Override Agent Flow
 ```bash
-AUTOGEN_CONVERSATION_FLOW='database' python main.py "show all tables"
+AUTOGEN_CONVERSATION_FLOW='kubernetes' python main.py "show cluster overview"
 ```
 
 ### Interactive Mode
@@ -183,82 +190,172 @@ python main.py --interactive
 }
 ```
 
+### Agent Configuration
+```json
+{
+  "name": "operations",
+  "system_message": "You are an Operations Specialist. Use your available tools to help with infrastructure management. When tools fail, try alternative approaches and explain your reasoning.",
+  "max_tool_iterations": 5,        // Allow up to 5 tool attempts
+  "reflect_on_tool_use": true       // Agent reflects on tool results
+}
+```
+
 ## 🎪 Supported MCP Servers
 
-The framework works with **ANY** MCP server that follows the standard protocol:
+The framework works with **ANY** MCP server that follows the standard protocol with SSE transport:
 
 - **Kubernetes** - kubectl operations, cluster management
 - **PostgreSQL** - Database queries, backups, monitoring  
 - **AWS** - EC2, S3, Lambda operations
 - **GitHub** - Repository management, CI/CD
 - **Monitoring** - Prometheus, Grafana, alerting
-- **Custom** - Any server implementing MCP protocol
+- **Custom** - Any server implementing MCP protocol with `/mcp-server/sse` endpoint
 
-## 🚨 Command Format
+## 🤖 Native AutoGen Tool Integration
 
-Agents use this universal format for MCP commands:
+### How It Works
+Agents use AutoGen's native function calling - no manual command parsing needed:
 
+1. **Agent Decision**: LLM automatically chooses appropriate tool
+2. **Tool Execution**: AutoGen handles MCP server communication  
+3. **Result Processing**: Agent analyzes results and can retry if needed
+4. **Multi-Turn**: Agent can chain multiple tools or retry with alternatives
+
+### Example Tool Flow
 ```
-EXECUTE_MCP: [tool_name] [arguments]
+User: "Find failing pods and get their logs"
 
-Examples:
-EXECUTE_MCP: kubectl_get pods -n production
-EXECUTE_MCP: pg_query SELECT * FROM users  
-EXECUTE_MCP: ec2_list --region us-east-1
-EXECUTE_MCP: prometheus_query up{job="api"}
+Agent Workflow:
+1. Uses kubectl_search to find pods
+2. If any failing pods found, uses kubectl_logs to get details  
+3. If kubectl_logs fails, tries kubectl_describe as fallback
+4. Analyzes all data and provides comprehensive response
 ```
 
 ## 🐛 Troubleshooting
 
 ### No agents found
 - Check `agents.json` has `"enabled": true`
-- Verify `"capabilities": ["mcp"]` is set
-- Ensure MCP servers are reachable
+- Verify agents have appropriate capabilities configured
+- Ensure MCP servers are reachable via SSE endpoints
 
 ### Tool not found
-- Check MCP server is running and responsive
-- Verify tool exists with: `curl http://localhost:3000/mcp/tools`
+- Check MCP server is running with `/mcp-server/sse` endpoint
+- Verify AutoGen can discover tools via native MCP integration
 - Check server/agent tool filtering configuration
 
 ### Connection errors
-- Verify MCP server URLs in `mcp_servers.json`
+- Verify MCP server URLs and SSE endpoints in `mcp_servers.json`
 - Check network connectivity to MCP servers
-- Ensure MCP servers are running and healthy
+- Ensure MCP servers support SSE transport
+
+### Tool execution failures
+- Agent will automatically retry with alternative tools
+- Check agent logs for tool iteration attempts
+- Verify MCP server responses are valid
 
 ## 📊 Example Output
 
 ```bash
-$ python main.py "get pods in mcp namespace"
+$ python main.py "check pods in mcp namespace and explain what you find"
 
 🚀 AutoGen MCP Framework
 ============================================================
 ✅ Configuration loaded and validated
-✅ MCP client created  
-✅ Discovered 22 tools from kubernetes server
 ✅ Agent orchestrator initialized
 ✅ CLI ready
 
-🔍 Query: get pods in mcp namespace
+🔍 Query: check pods in mcp namespace and explain what you find
 --------------------------------------------------
 
-🔄 Multi-Agent Conversation (1 agents participated):
+🔄 Multi-Agent Conversation (2 agents participated):
 ================================================================================
 
 [1] 🤖 KUBERNETES:
 ----------------------------------------
-EXECUTE_MCP: kubectl_get pods -n mcp
+Using kubectl_search tool to find pods in mcp namespace...
 
-✅ Found 5 pods in mcp namespace:
+✅ Found 9 pods in mcp namespace:
+- elasticsearch-mcp-bridge-655cfd8d8d-dpnnz (Running)
+- gitbook-mcp-bridge-567f9cdb99-jm6jb (Running)  
+- kubernetes-host-jah-mcp-bridge-5db5d55cfb-rc4wg (Running)
+- kubernetes-mgmt-mcp-bridge-96956c49b-g9v7r (Running)
 - kubernetes-vclusterdev-mcp-bridge-887765b67-c6c4p (Running)
-- kubernetes-vclusternim-mcp-bridge-6c4695cc46-nlm2h (Running)  
+- kubernetes-vclusternim-mcp-bridge-6c4695cc46-nlm2h (Running)
 - postgre-respona-dev-mcp-bridge-877f5c9c4-67h2b (Running)
 - postgre-respona-prod-mcp-bridge-57cbbb68f7-cpbd9 (Running)
 - respona-dashboard-mcp-bridge-5bf7c4878c-nln6p (Running)
 
+All pods are distributed across multiple nodes and in Running state, 
+indicating a healthy and well-balanced cluster deployment.
+
+[2] 📋 REVIEWER:
+----------------------------------------
+Based on the Kubernetes data analysis:
+
+**Insights:**
+- All 9 pods are Running successfully (100% availability)
+- Good node distribution across the cluster
+- Mix of services: Elasticsearch, GitBook, PostgreSQL, dashboards
+- Recent pod updates from June-August 2025
+
+**Recommendations:**
+- Monitor resource usage across nodes
+- Implement automated health checks  
+- Maintain regular security updates
+- Consider backup strategies for critical services
+
 ================================================================================
-✅ Workflow completed with 1 agent responses
+✅ Workflow completed with 6 agent responses
 ```
 
-## 🎉 That's It!
+## 🏗️ Key Dependencies
 
-The framework is **completely generic** and **production-ready**! Add any MCP server, configure via JSON, and start automating! No code changes ever needed! 🚀 
+Current framework uses these core dependencies:
+
+```txt
+# AutoGen framework with native MCP support
+autogen-agentchat[openai]>=0.7.3
+autogen-ext[mcp]>=0.7.3
+
+# Core dependencies
+pydantic>=2.10.0
+httpx>=0.28.1
+python-dotenv>=1.0.0
+
+# Development and testing  
+pytest>=7.0.0
+structlog>=23.0.0
+```
+
+No additional MCP dependencies needed - AutoGen handles everything natively!
+Supports any standardized MCP server via SSE, Stdio, or HTTP transport.
+
+## 🎉 Framework Capabilities
+
+### ✅ **Multi-Turn Intelligence**
+- **Tool Retry**: Agents automatically retry failed tools with alternatives
+- **Tool Chaining**: Agents can use multiple tools in sequence to solve complex tasks
+- **Context Preservation**: Full conversation history maintained across agent interactions
+- **Smart Tool Selection**: LLM automatically chooses the most appropriate tool
+
+### ✅ **Production Ready**
+- **Zero Hardcoding**: Works with ANY MCP server out of the box
+- **Dynamic Discovery**: Automatically finds and configures all available tools
+- **Flexible Configuration**: Complete control via JSON files, no code changes needed
+- **Robust Error Handling**: Graceful fallbacks and intelligent retry mechanisms
+
+### ✅ **Enterprise Features**
+- **Multi-Agent Workflows**: Sophisticated collaboration between specialized agents
+- **Server Agnostic**: Support for unlimited concurrent MCP servers
+- **Granular Tool Control**: Fine-grained filtering at server and agent levels
+- **Native AutoGen Integration**: Leverages AutoGen's mature tooling ecosystem
+
+### 🚀 **Get Started Now**
+
+1. **Clone and install dependencies**
+2. **Configure your MCP servers and agents** 
+3. **Run your first query**
+4. **Watch agents intelligently collaborate with tools!**
+
+The framework is **completely generic** and **production-ready**! Add any MCP server, configure via JSON, and start automating complex workflows with intelligent multi-turn tool execution! 🚀 
