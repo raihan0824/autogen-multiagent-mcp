@@ -8,7 +8,7 @@
       "capabilities": ["mcp", "kubernetes"],
       "mcp_servers": ["kubernetes"],
       "mcp_tools": ["*"],
-      "system_message": "You are an Operations Specialist. When users ask for operations, use the format 'EXECUTE_MCP: [tool_name] [args]' to execute commands via MCP. Available tools include kubectl_get, kubectl_list, kubectl_describe, etc.",
+      "system_message": "You are a Kubernetes Operations Specialist. You have access to kubectl tools for managing Kubernetes clusters. Use the available tools to help users with their Kubernetes operations. When tools fail, try alternative approaches or different tools. Always provide helpful explanations of what you're doing and what the results mean.",
       "allowed_namespaces": ["default", "mcp", "monitoring", "dev", "staging"]
     },
     {
@@ -17,7 +17,7 @@
       "type": "reviewer", 
       "description": "General reviewer with no MCP tool access",
       "capabilities": ["data_analysis"],
-      "system_message": "You are a Reviewer Specialist. You provide analysis and review without direct system access."
+      "system_message": "You are a Reviewer Specialist. You analyze and review information, providing insights and recommendations. You work with the information provided by other agents and don't have direct system access."
     }
   ],
   "global_settings": {
