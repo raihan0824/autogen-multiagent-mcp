@@ -2,12 +2,20 @@
 autogen-agentchat[openai]>=0.7.3
 autogen-ext[mcp]>=0.7.3
 
+# Required dependencies for OpenAI models
+openai>=1.0.0
+tiktoken>=0.5.0
+
 # Core dependencies
 pydantic>=2.10.0
 httpx>=0.28.1
 
 # Environment and configuration
 python-dotenv>=1.0.0
+
+# Web API framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
 
 # Development and testing
 pytest>=7.0.0
@@ -16,4 +24,4 @@ pytest>=7.0.0
 structlog>=23.0.0
 
 # No additional MCP dependencies needed - AutoGen handles everything natively
-# Supports any standardized MCP server via SSE, Stdio, or HTTP transport 
+# Supports any standardized MCP server via SSE, Stdio, or HTTP transport

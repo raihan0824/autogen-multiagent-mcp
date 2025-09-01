@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: akmalrmn-autogen-mcp-api
+  namespace: akmal-dekallm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: akmalrmn-autogen-mcp-api
+  template:
+    metadata:
+      labels:
+        app: akmalrmn-autogen-mcp-api
+    spec:
+      containers:
+      - name: akmalrmn-autogen-mcp-api
+        image: dekaregistry.cloudeka.id/cloudeka-system/akmalrmn-autogen-mcp-api:v1.1.0
+        ports:
+        - containerPort: 8000
+        env:
+        # LLM Configuration
+        - name: AUTOGEN_LLM_MODEL
+          value: "qwen2.5:latest"
+        - name: AUTOGEN_LLM_API_BASE
+          value: "http://localhost:11434/v1"
+        - name: AUTOGEN_LLM_API_KEY
+          value: "test-api-key"
+        - name: AUTOGEN_LLM_TIMEOUT
+          value: "300"
+        - name: AUTOGEN_LLM_TEMPERATURE
+          value: "0.7"
+        - name: AUTOGEN_LLM_MAX_TOKENS
+          value: "4096"
+        - name: AUTOGEN_LLM_FAMILY
+          value: "qwen"
+        
+        # Agent Configuration
+        - name: AUTOGEN_MAX_ROUNDS
+          value: "10"
+        - name: AUTOGEN_ALLOWED_NAMESPACES
+          value: "default,kube-system,monitoring"
+        - name: AUTOGEN_CONVERSATION_TIMEOUT
+          value: "600"
+        
+        # MCP Configuration
+        - name: AUTOGEN_MCP_ENABLED
+          value: "true"
+        - name: AUTOGEN_MCP_AUTO_DISCOVER_TOOLS
+          value: "true"
+        
+        # Configuration Files
+        - name: AUTOGEN_AGENTS_CONFIG_FILE
+          value: "agents.json"
+        - name: AUTOGEN_MCP_SERVERS_CONFIG_FILE
+          value: "mcp_servers.json"
+        
+        # Logging
+        - name: AUTOGEN_LOG_LEVEL
+          value: "INFO"
+        - name: AUTOGEN_LOG_TO_FILE
+          value: "false"
+        
+        # API Mode
+        - name: AUTOGEN_API_MODE
+          value: "true"
+        
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: akmalrmn-autogen-mcp-api-service
+  namespace: akmal-dekallm
+spec:
+  selector:
+    app: akmalrmn-autogen-mcp-api
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
